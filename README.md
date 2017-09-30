@@ -51,8 +51,7 @@ Simple as. For admins:
     [POST] /create <key> <subdomain>           - Create a subdomain with a random key
     [POST] /modify <key> <subdomain> <ip4/ip6> - Manually assign an address to a subdomain
     [POST] /delete <key> <subdomain>           - Delete a subdomain
-    [POST] /lock   <key> <subdomain>           - Lock a subdomain to prevent updates
-    [POST] /unlock <key> <subdomain>           - Unlock a subdomain to allow updates
+    [POST] /lock   <key> <subdomain> <1/0>     - Modify lock state of a subdomain
     [POST] /chgkey <key> <subdomain>           - Generate a new random key for a subdomain
     [POST] /list   <key> <subdomain>           - List all subdomains, their ips and last update
     [POST] /help   <key>                       - Display admin help

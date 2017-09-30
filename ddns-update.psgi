@@ -361,8 +361,7 @@ sub get_help {
                 "[POST] /create <key> <subdomain>           - Create a subdomain with a random key\n" .
                 "[POST] /modify <key> <subdomain> <ip4/ip6> - Manually assign an address to a subdomain\n" .
                 "[POST] /delete <key> <subdomain>           - Delete a subdomain\n" .
-                "[POST] /lock   <key> <subdomain>           - Lock a subdomain to prevent updates\n" .
-                "[POST] /unlock <key> <subdomain>           - Unlock a subdomain to allow updates\n" .
+                "[POST] /lock   <key> <subdomain> <1/0>     - Modify lock state of a subdomain\n" .
                 "[POST] /chgkey <key> <subdomain>           - Generate a new random key for a subdomain\n" .
                 "[POST] /list   <key> <subdomain>           - List all subdomains, their ips and last update\n" .
                 "[POST] /help   <key>                       - Display admin help\n");
