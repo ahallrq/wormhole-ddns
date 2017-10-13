@@ -6,18 +6,14 @@ use warnings;
 use Data::Dumper qw(Dumper);
 $Data::Dumper::Sortkeys = 1;
 
+use conf;
+
 use DBI;
 use Plack::Request;
 use Net::DNS;
 use Regexp::Common qw /net/;
 
-my $admin_key = "<insert key here>";
 my @key_char_set = ("A".."Z", "a".."z", "0".."9");
-
-my $NAMESERVER_DNSSEC_KEY = "/path/to/a/dnssec/key";
-my $NAMESERVER_DNS_ZONE = "ddns.example.org";
-#my @NAMESERVER_NS_LIST = ("ns1.ddns.example.org", "ns2.ddns.example.org");
-my $NAMESERVER = "ns1.ddns.example.org";
 
 my $DDNS_DB = DBI->connect("dbi:SQLite:ddns.db","","") or die "Could not connect to database\n";
 my ($DDNS_DB_INS, $DDNS_DB_SEL_ALL, $DDNS_DB_SEL, $DDNS_DB_UPD_ADR);
@@ -156,7 +152,7 @@ sub create_subdomain {
     
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $admin_key); if (defined $c_key) { return $c_key; }
+    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
     my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
     if ($c_subexists == 0) { 
@@ -172,11 +168,11 @@ sub create_subdomain {
     
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
-            "Successfully created subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\nKey: $subdomain_key\n");
+            "Successfully created subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\nKey: $subdomain_key\n");
         return $res->finalize;
     } else {
         my $res = $req->new_response(400, [], 
-            "Failed to create subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\n");
+            "Failed to create subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
         return $res->finalize;
     }
 }
@@ -186,23 +182,23 @@ sub delete_subdomain {
     
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $admin_key); if (defined $c_key) { return $c_key; }
+    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
     my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my $subdomain = $req->body_parameters->get("subdomain");
 
-    my $dns_update = new Net::DNS::Update($NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$NAMESERVER_DNS_ZONE. A"));
-    $dns_update->push(update => rr_del("$subdomain.$NAMESERVER_DNS_ZONE. AAAA"));
-    $dns_update->sign_tsig($NAMESERVER_DNSSEC_KEY);
+    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
+    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. A"));
+    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. AAAA"));
+    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
 
     my ($r_code, $r_msg) = execute_ddns($dns_update);
 
     if (!$r_code) {
    	my $res = $req->new_response(400, [], 
-        "Failed to delete subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\" from nameserver.\n");
+        "Failed to delete subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\" from nameserver.\n");
         return $res->finalize;
     }
 
@@ -210,11 +206,11 @@ sub delete_subdomain {
     
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
-            "Successfully deleted subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\n");
+            "Successfully deleted subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
         return $res->finalize;
     } else {
         my $res = $req->new_response(400, [], 
-            "Failed to delete subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\" from database.\n");
+            "Failed to delete subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\" from database.\n");
         return $res->finalize;
     }
 }
@@ -224,7 +220,7 @@ sub list_subdomains {
     
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $admin_key); if (defined $c_key) { return $c_key; }
+    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
 
     my @states = ("unlocked", "locked");
 
@@ -235,7 +231,7 @@ sub list_subdomains {
         $rowcount += 1;
         my $time = localtime $row[5];
         my $lockstate = $row[4];
-        $restext .= "$row[0].$NAMESERVER_DNS_ZONE:\n├── Key: $row[1]\n├── State: $states[$lockstate]\n├── Updated: $time\n" .
+        $restext .= "$row[0].$conf::NAMESERVER_DNS_ZONE:\n├── Key: $row[1]\n├── State: $states[$lockstate]\n├── Updated: $time\n" .
                     "├── IPv4: $row[2]\n└── IPv6: $row[3]\n\n";
     }
     
@@ -254,7 +250,7 @@ sub lock_subdomain {
     
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain", "state")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $admin_key); if (defined $c_key) { return $c_key; }
+    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
     my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
@@ -274,11 +270,11 @@ sub lock_subdomain {
 
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
-            "Successfully $states[$lock_state]ed subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\n");
+            "Successfully $states[$lock_state]ed subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
         return $res->finalize;
     } else {
         my $res = $req->new_response(400, [], 
-            "Failed to $states[$lock_state] subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\n");
+            "Failed to $states[$lock_state] subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
         return $res->finalize;
     }
 }
@@ -288,7 +284,7 @@ sub chgkey_subdomain {
     
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $admin_key); if (defined $c_key) { return $c_key; }
+    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
     my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
@@ -301,12 +297,12 @@ sub chgkey_subdomain {
 
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
-            "Successfully regenerated key for subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\n" .
+            "Successfully regenerated key for subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n" .
             "Key: $subdomain_key\n");
         return $res->finalize;
     } else {
         my $res = $req->new_response(400, [], 
-            "Failed to regenerate key for subdomain \"$subdomain.$NAMESERVER_DNS_ZONE\"\n");
+            "Failed to regenerate key for subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
         return $res->finalize;
     }
 }
@@ -319,7 +315,7 @@ sub modify_subdomain {
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
     my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
-    my $c_key = check_key($req, $admin_key); if (defined $c_key) { return $c_key; }
+    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     
     my $subdomain = $req->body_parameters->get('subdomain');
     my $address   = $req->body_parameters->get('ip');
@@ -329,10 +325,10 @@ sub modify_subdomain {
         my $res = $req->new_response(400, [], "Invalid IP address specified.\n"); return $res->finalize;
     }
 
-    my $dns_update = new Net::DNS::Update($NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$NAMESERVER_DNS_ZONE. $rec_type"));
-    $dns_update->push(update => rr_add("$subdomain.$NAMESERVER_DNS_ZONE. $ttl $rec_type $address"));
-    $dns_update->sign_tsig($NAMESERVER_DNSSEC_KEY);
+    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
+    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. $rec_type"));
+    $dns_update->push(update => rr_add("$subdomain.$conf::NAMESERVER_DNS_ZONE. $ttl $rec_type $address"));
+    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
 
     my ($r_code, $r_msg) = execute_ddns($dns_update);
     if (!$r_code) {
@@ -355,7 +351,7 @@ sub get_help {
     my $c_method = check_method($req);
     if (!defined $c_method) {
         my $c_params = check_params($req, ("key")); 
-        if (!defined $c_params && $req->body_parameters->get("key") eq $admin_key) {
+        if (!defined $c_params && $req->body_parameters->get("key") eq $conf::admin_key) {
             my $res = $req->new_response(200, [],
                 "-- Wormhole DynDNS Admin help --\n" .
                 "[POST] /create <key> <subdomain>           - Create a subdomain with a random key\n" .
@@ -399,10 +395,10 @@ sub update_ddns {
         return $res->finalize;
     }
 
-    my $dns_update = new Net::DNS::Update($NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$NAMESERVER_DNS_ZONE. $rec_type"));
-    $dns_update->push(update => rr_add("$subdomain.$NAMESERVER_DNS_ZONE. $ttl $rec_type $address"));
-    $dns_update->sign_tsig($NAMESERVER_DNSSEC_KEY);
+    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
+    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. $rec_type"));
+    $dns_update->push(update => rr_add("$subdomain.$conf::NAMESERVER_DNS_ZONE. $ttl $rec_type $address"));
+    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
 
     my ($r_code, $r_msg) = execute_ddns($dns_update);
     if (!$r_code) {
@@ -441,19 +437,19 @@ sub clear_ddns {
         return $res->finalize;
     }
 
-    my $dns_update = new Net::DNS::Update($NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$NAMESERVER_DNS_ZONE. $rec_type"));
-    $dns_update->sign_tsig($NAMESERVER_DNSSEC_KEY);
+    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
+    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. $rec_type"));
+    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
 
     my ($r_code, $r_msg) = execute_ddns($dns_update);
     if (!$r_code) {
    	my $res = $req->new_response(400, [], 
-       "An attempt to clear $subdomain.$NAMESERVER_DNS_ZONE failed.\n"); return $res->finalize;
+       "An attempt to clear $subdomain.$conf::NAMESERVER_DNS_ZONE failed.\n"); return $res->finalize;
     } else {
         my $time = time;
         $DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
         my $res = $req->new_response(200, [], 
-            "Successfully cleared $subdomain.$NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
+            "Successfully cleared $subdomain.$conf::NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
     }
 }
 
@@ -461,7 +457,7 @@ sub execute_ddns {
     my $dns_update = shift;
     
     my $dns_resolv = new Net::DNS::Resolver;
-    $dns_resolv->nameserver($NAMESERVER); # convert to list later
+    $dns_resolv->nameserver($conf::NAMESERVER); # convert to list later
 
     my $reply = $dns_resolv->send($dns_update);
     if ($reply) {
