@@ -4,6 +4,8 @@ use warnings;
 use Exporter qw(import);
 our @EXPORT_OK = qw(check_params check_key check_method subdomain_exists valid_subdomain);
 
+use database;
+
 sub check_params {
     my ($req, @param_list) = @_;
     

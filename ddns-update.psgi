@@ -9,6 +9,7 @@ $Data::Dumper::Sortkeys = 1;
 use lib '.';
 use conf;
 use checks qw(check_params check_key check_method subdomain_exists valid_subdomain);
+use database;
 #use routes::createsub;
 #use routes::modifysub;
 #use routes::deletesub;
@@ -26,28 +27,7 @@ use Regexp::Common qw /net/;
 
 my @key_char_set = ("A".."Z", "a".."z", "0".."9");
 
-my $DDNS_DB = DBI->connect("dbi:SQLite:ddns.db","","") or die "Could not connect to database\n";
-my ($DDNS_DB_INS, $DDNS_DB_SEL_ALL, $DDNS_DB_SEL, $DDNS_DB_UPD_ADR);
-my ($DDNS_DB_DEL, $DDNS_DB_UPD_ATT, $DDNS_DB_UPD_KEY, $DDNS_DB_UPD_LCK);
-
-while (1) {
-    $DDNS_DB_INS = eval { $DDNS_DB->prepare('INSERT INTO subdomains VALUES (?,?,?,?,?,?,?,?)') };
-    $DDNS_DB_UPD_ATT = eval { $DDNS_DB->prepare('UPDATE subdomains SET attempt_time = ?, attempt_count = ? WHERE subdomain = ?') };
-    $DDNS_DB_UPD_KEY = eval { $DDNS_DB->prepare('UPDATE subdomains SET key = ? WHERE subdomain = ?') };
-    $DDNS_DB_UPD_ADR = eval { $DDNS_DB->prepare('UPDATE subdomains SET ipv4 = ?, ipv6 = ?, update_time = ? WHERE subdomain = ?') };
-    $DDNS_DB_UPD_LCK = eval { $DDNS_DB->prepare('UPDATE subdomains SET lock = ? WHERE subdomain = ?') };
-    $DDNS_DB_DEL = eval { $DDNS_DB->prepare('DELETE FROM subdomains WHERE subdomain = ?') };
-    $DDNS_DB_SEL_ALL = eval { $DDNS_DB->prepare('SELECT * FROM subdomains') };
-    $DDNS_DB_SEL = eval { $DDNS_DB->prepare('SELECT * FROM subdomains WHERE subdomain = ?') };
-    last if $DDNS_DB_INS && $DDNS_DB_UPD_ATT && $DDNS_DB_UPD_KEY && $DDNS_DB_UPD_ADR;
-    last if $DDNS_DB_DEL && $DDNS_DB_SEL && $DDNS_DB_SEL_ALL && $DDNS_DB_UPD_LCK;
-
-    warn "Creating table 'subdomains'\n";
-    $DDNS_DB->do('CREATE TABLE subdomains (subdomain varchar(255) PRIMARY KEY, key varchar(255), ' .
-                 'ipv4 varchar(255), ipv6 varchar(255), lock int, update_time int, ' .
-                 'attempt_time int, attempt_count int);') or
-        die("Failed to create table in database.\n");
-}
+database::prepare_database();
 
 my %routes = (
     "/create" => \&create_subdomain,
@@ -93,7 +73,7 @@ sub create_subdomain {
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 0) { 
         my $res = $req->new_response(404, [], "The specified subdomain already exists.\n"); 
         return $res->finalize;
@@ -103,7 +83,7 @@ sub create_subdomain {
     my $subdomain_key = rand_pass(64);
     my $time = time;
 
-    my $s_res = $DDNS_DB_INS->execute($subdomain, $subdomain_key, "(unset)", "(unset)", 0, $time, 0, 0);
+    my $s_res = $database::DDNS_DB_INS->execute($subdomain, $subdomain_key, "(unset)", "(unset)", 0, $time, 0, 0);
     
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
@@ -123,7 +103,7 @@ sub delete_subdomain {
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my $subdomain = $req->body_parameters->get("subdomain");
@@ -141,7 +121,7 @@ sub delete_subdomain {
         return $res->finalize;
     }
 
-    my $s_res = $DDNS_DB_DEL->execute($subdomain);
+    my $s_res = $database::DDNS_DB_DEL->execute($subdomain);
     
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
@@ -164,9 +144,9 @@ sub list_subdomains {
     my @states = ("unlocked", "locked");
 
     my $restext = "-- Wormhole DynDNS Subdomains --\n";
-    $DDNS_DB_SEL_ALL->execute;
+    $database::DDNS_DB_SEL_ALL->execute;
     my $rowcount = 0;
-    while (my @row = $DDNS_DB_SEL_ALL->fetchrow_array) {
+    while (my @row = $database::DDNS_DB_SEL_ALL->fetchrow_array) {
         $rowcount += 1;
         my $time = localtime $row[5];
         my $lockstate = $row[4];
@@ -191,7 +171,7 @@ sub lock_subdomain {
     my $c_params = check_params($req, ("key", "subdomain", "state")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my @states = ("unlock", "lock");
@@ -205,7 +185,7 @@ sub lock_subdomain {
         return $res->finalize;
     }
 
-    my $s_res = $DDNS_DB_UPD_LCK->execute($lock_state, $subdomain);
+    my $s_res = $database::DDNS_DB_UPD_LCK->execute($lock_state, $subdomain);
 
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
@@ -225,14 +205,14 @@ sub chgkey_subdomain {
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my $subdomain = $req->body_parameters->get("subdomain");
 
     my $subdomain_key = rand_pass(64);
 
-    my $s_res = $DDNS_DB_UPD_KEY->execute($subdomain_key, $subdomain);
+    my $s_res = $database::DDNS_DB_UPD_KEY->execute($subdomain_key, $subdomain);
 
     if (defined $s_res) {
         my $res = $req->new_response(200, [], 
@@ -252,7 +232,7 @@ sub modify_subdomain {
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain", "ip")); if (defined $c_params) { return $c_params; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     
@@ -275,9 +255,9 @@ sub modify_subdomain {
     } else {
         my $time = time;
         if ($rec_type eq "A") {
-            $DDNS_DB_UPD_ADR->execute($address, $subdomain_r[3], $time, $subdomain_r[0]);
+            $database::DDNS_DB_UPD_ADR->execute($address, $subdomain_r[3], $time, $subdomain_r[0]);
         } elsif ($rec_type eq "AAAA") {
-            $DDNS_DB_UPD_ADR->execute($subdomain_r[2], $address, $time, $subdomain_r[0]);
+            $database::DDNS_DB_UPD_ADR->execute($subdomain_r[2], $address, $time, $subdomain_r[0]);
         }
         
         my $res = $req->new_response(200, [], "Modfication successful.\n"); return $res->finalize;
@@ -318,7 +298,7 @@ sub update_ddns {
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
     my $c_key = check_key($req, $subdomain_r[1]); if (defined $c_key) { return $c_key; }
     
@@ -345,9 +325,9 @@ sub update_ddns {
     } else {
         my $time = time;
         if ($rec_type eq "A") {
-            $DDNS_DB_UPD_ADR->execute($address, $subdomain_r[3], $time, $subdomain_r[0]);
+            $database::DDNS_DB_UPD_ADR->execute($address, $subdomain_r[3], $time, $subdomain_r[0]);
         } elsif ($rec_type eq "AAAA") {
-            $DDNS_DB_UPD_ADR->execute($subdomain_r[2], $address, $time, $subdomain_r[0]);
+            $database::DDNS_DB_UPD_ADR->execute($subdomain_r[2], $address, $time, $subdomain_r[0]);
         }
         
         my $res = $req->new_response(200, [], "Update successful.\n"); return $res->finalize;
@@ -360,7 +340,7 @@ sub clear_ddns {
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $database::DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
     my $c_key = check_key($req, $subdomain_r[1]); if (defined $c_key) { return $c_key; }
 
@@ -386,7 +366,7 @@ sub clear_ddns {
        "An attempt to clear $subdomain.$conf::NAMESERVER_DNS_ZONE failed.\n"); return $res->finalize;
     } else {
         my $time = time;
-        $DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
+        $database::DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
         my $res = $req->new_response(200, [], 
             "Successfully cleared $subdomain.$conf::NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
     }
