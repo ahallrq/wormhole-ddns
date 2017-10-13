@@ -434,7 +434,7 @@ sub clear_ddns {
     my $address   = $req->address;
     my $rec_type  = ip_record_type($address);
 
-    if ($subdomain_r[3] == 1) {
+    if ($subdomain_r[4] == 1) {
         my $res = $req->new_response(401, [], 
             "The subdomain cannot be cleared because it is currently locked.\n" .
             "Please contact the administrator for assistance.\n"); 
