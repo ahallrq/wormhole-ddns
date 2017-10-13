@@ -6,7 +6,18 @@ use warnings;
 use Data::Dumper qw(Dumper);
 $Data::Dumper::Sortkeys = 1;
 
+use lib '.';
 use conf;
+use checks qw(check_params check_key check_method subdomain_exists valid_subdomain);
+#use routes::createsub;
+#use routes::modifysub;
+#use routes::deletesub;
+#use routes::locksub;
+#use routes::chgkey;
+#use routes::listsub;
+#use routes::help;
+#use routes::updatesub;
+#use routes::clearsub;
 
 use DBI;
 use Plack::Request;
@@ -73,79 +84,7 @@ sub ip_record_type {
     return $type;
 }
 
-sub check_params {
-    my ($req, @param_list) = @_;
-    
-    my $query = $req->body_parameters;
 
-    foreach my $param (@param_list) {
-        my $tmp = $query->get($param);
-        
-        if (!defined $tmp) {
-            my $res = $req->new_response(400, [], 
-                    "One or more required parameters is missing from the request.\n" .
-                    "Check the documentation for more informaion.\n");
-            return $res->finalize;
-        }
-    }
-
-    return undef;
-}
-
-sub check_key {
-    my ($req, $valid_key) = @_;
-    
-    my $query     = $req->body_parameters;
-    my $api_key   = $query->get('key');
-    
-    if ($api_key ne $valid_key) {
-	    my $res = $req->new_response(403, [], 
-            "An invalid key has been supplied and as a result access has been denied.\n");
-	    return $res->finalize;
-    }
-    
-    return undef;
-}
-
-sub check_method {
-    my $req = shift;
-
-    if ($req->method ne 'POST') {
-        my $res = $req->new_response(405, [], "Only POST requests are supported.\n");
-        return $res->finalize;
-    }
-    
-    return undef;
-}
-
-sub subdomain_exists {
-    my $req = shift;
-
-    $DDNS_DB_SEL->execute($req->body_parameters->get('subdomain'));
-    my @result = $DDNS_DB_SEL->fetchrow_array;
-    if (!@result) {
-        my @res = ($req->new_response(404, [], "The specified subdomain was not found.\n"));
-        return @res;
-    }
-    
-    return @result;
-}
-
-sub valid_subdomain {
-    my $req = shift;
-
-    my $subdomain = $req->body_parameters->get('subdomain');
-
-    if ($subdomain !~ m/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/) {
-        my $res = $req->new_response(400, [], 
-                "Requested subdomain contains one or more invalid characters.\n" . 
-                "Subdomains must consist of alphanumeric characters and hyphens." .
-                "Furthermore they must not start or end with hyphens.\n");
-        return $res->finalize;
-    }
-    
-    return undef;
-}
 
 sub create_subdomain {
     my $req = shift;
@@ -154,7 +93,7 @@ sub create_subdomain {
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 0) { 
         my $res = $req->new_response(404, [], "The specified subdomain already exists.\n"); 
         return $res->finalize;
@@ -184,7 +123,7 @@ sub delete_subdomain {
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my $subdomain = $req->body_parameters->get("subdomain");
@@ -252,7 +191,7 @@ sub lock_subdomain {
     my $c_params = check_params($req, ("key", "subdomain", "state")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my @states = ("unlock", "lock");
@@ -286,7 +225,7 @@ sub chgkey_subdomain {
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
     my $subdomain = $req->body_parameters->get("subdomain");
@@ -313,7 +252,7 @@ sub modify_subdomain {
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain", "ip")); if (defined $c_params) { return $c_params; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
     my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
     
@@ -379,7 +318,7 @@ sub update_ddns {
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
     my $c_key = check_key($req, $subdomain_r[1]); if (defined $c_key) { return $c_key; }
     
@@ -421,7 +360,7 @@ sub clear_ddns {
     my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
     my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
     my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
+    my @subdomain_r = subdomain_exists($req, $DDNS_DB_SEL); my $c_subexists = @subdomain_r;
     if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
     my $c_key = check_key($req, $subdomain_r[1]); if (defined $c_key) { return $c_key; }
 
