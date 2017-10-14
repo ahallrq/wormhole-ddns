@@ -53,10 +53,9 @@ sub check_method {
 
 sub subdomain_exists {
     my $req = shift;
-    my $DDNS_DB_SEL = shift;
 
-    $DDNS_DB_SEL->execute($req->body_parameters->get('subdomain'));
-    my @result = $DDNS_DB_SEL->fetchrow_array;
+    $database::DDNS_DB_SEL->execute($req->body_parameters->get('subdomain'));
+    my @result = $database::DDNS_DB_SEL->fetchrow_array;
     if (!@result) {
         my @res = ($req->new_response(404, [], "The specified subdomain was not found.\n"));
         return @res;
