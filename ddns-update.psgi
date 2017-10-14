@@ -15,7 +15,7 @@ use routes::createsub;
 #use routes::modifysub;
 use routes::deletesub;
 #use routes::locksub;
-#use routes::chgkey;
+use routes::chgkey;
 use routes::listsub;
 use routes::help;
 use routes::updatesub;
@@ -32,7 +32,7 @@ my %routes = (
     "/modify" => \&modify_subdomain,
     "/delete" => \&deletesub::delete_subdomain,
     "/lock" => \&lock_subdomain,
-    "/chgkey" => \&chgkey_subdomain,
+    "/chgkey" => \&chgkey::chgkey_subdomain,
     "/list" => \&listsub::list_subdomains,
     "/help" => \&help::get_help,
     "/update" => \&updatesub::update_ddns,
@@ -73,33 +73,7 @@ sub lock_subdomain {
     }
 }
 
-sub chgkey_subdomain {
-    my $req = shift;
-    
-    my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
-    my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
-    my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
-    if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
-    my $subdomain = $req->body_parameters->get("subdomain");
-
-    my $subdomain_key = rand_pass(64);
-
-    my $s_res = $database::DDNS_DB_UPD_KEY->execute($subdomain_key, $subdomain);
-
-    if (defined $s_res) {
-        my $res = $req->new_response(200, [], 
-            "Successfully regenerated key for subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n" .
-            "Key: $subdomain_key\n");
-        return $res->finalize;
-    } else {
-        my $res = $req->new_response(400, [], 
-            "Failed to regenerate key for subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
-        return $res->finalize;
-    }
-}
 
 sub modify_subdomain {
     my $req = shift;
