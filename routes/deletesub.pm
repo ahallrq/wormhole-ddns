@@ -8,7 +8,7 @@ our @EXPORT_OK = qw(delete_subdomain);
 
 use lib "..";
 use checks qw(check_params check_key check_method subdomain_exists valid_subdomain);
-use util qw(rand_pass execute_ddns);
+use util qw(execute_ddns);
 use database;
 use Net::DNS;
 

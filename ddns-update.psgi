@@ -18,11 +18,12 @@ use routes::deletesub;
 #use routes::chgkey;
 use routes::listsub;
 use routes::help;
-#use routes::updatesub;
-#use routes::clearsub;
+use routes::updatesub;
+use routes::clearsub;
 
 use DBI;
 use Plack::Request;
+use Net::DNS;
 
 database::prepare_database();
 
@@ -34,11 +35,9 @@ my %routes = (
     "/chgkey" => \&chgkey_subdomain,
     "/list" => \&listsub::list_subdomains,
     "/help" => \&help::get_help,
-    "/update" => \&update_ddns,
-    "/clear" => \&clear_ddns,
+    "/update" => \&updatesub::update_ddns,
+    "/clear" => \&clearsub::clear_ddns,
 );
-
-
 
 sub lock_subdomain {
     my $req = shift;
@@ -137,86 +136,6 @@ sub modify_subdomain {
         }
         
         my $res = $req->new_response(200, [], "Modfication successful.\n"); return $res->finalize;
-    }
-}
-
-sub update_ddns {
-    my $req = shift;
-    
-    my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
-    my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
-    if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
-    my $c_key = check_key($req, $subdomain_r[1]); if (defined $c_key) { return $c_key; }
-    
-    my $subdomain = $req->body_parameters->get('subdomain');
-    my $address   = $req->address;
-    my $ttl       = 2;
-    my $rec_type  = ip_record_type($address);
-
-    if ($subdomain_r[4] == 1) {
-        my $res = $req->new_response(401, [], 
-        "The subdomain cannot be updated because it is currently locked.\n" .
-            "Please contact the administrator for assistance.\n"); 
-        return $res->finalize;
-    }
-
-    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. $rec_type"));
-    $dns_update->push(update => rr_add("$subdomain.$conf::NAMESERVER_DNS_ZONE. $ttl $rec_type $address"));
-    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
-
-    my ($r_code, $r_msg) = execute_ddns($dns_update);
-    if (!$r_code) {
-        my $res = $req->new_response(400, [], "Update failed.\n"); return $res->finalize;
-    } else {
-        my $time = time;
-        if ($rec_type eq "A") {
-            $database::DDNS_DB_UPD_ADR->execute($address, $subdomain_r[3], $time, $subdomain_r[0]);
-        } elsif ($rec_type eq "AAAA") {
-            $database::DDNS_DB_UPD_ADR->execute($subdomain_r[2], $address, $time, $subdomain_r[0]);
-        }
-        
-        my $res = $req->new_response(200, [], "Update successful.\n"); return $res->finalize;
-    }
-}
-
-sub clear_ddns {
-    my $req = shift;
-
-    my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
-    my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
-    if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
-    my $c_key = check_key($req, $subdomain_r[1]); if (defined $c_key) { return $c_key; }
-
-    my $query = $req->body_parameters;
-    my $subdomain = $query->get('subdomain');
-    my $address   = $req->address;
-    my $rec_type  = ip_record_type($address);
-
-    if ($subdomain_r[4] == 1) {
-        my $res = $req->new_response(401, [], 
-            "The subdomain cannot be cleared because it is currently locked.\n" .
-            "Please contact the administrator for assistance.\n"); 
-        return $res->finalize;
-    }
-
-    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. $rec_type"));
-    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
-
-    my ($r_code, $r_msg) = execute_ddns($dns_update);
-    if (!$r_code) {
-   	my $res = $req->new_response(400, [], 
-       "An attempt to clear $subdomain.$conf::NAMESERVER_DNS_ZONE failed.\n"); return $res->finalize;
-    } else {
-        my $time = time;
-        $database::DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
-        my $res = $req->new_response(200, [], 
-            "Successfully cleared $subdomain.$conf::NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
     }
 }
 
