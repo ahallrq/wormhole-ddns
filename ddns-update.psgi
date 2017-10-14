@@ -9,6 +9,7 @@ $Data::Dumper::Sortkeys = 1;
 use lib '.';
 use conf;
 use checks qw(check_params check_key check_method subdomain_exists valid_subdomain);
+use util qw(rand_pass ip_record_type);
 use database;
 #use routes::createsub;
 #use routes::modifysub;
@@ -23,9 +24,6 @@ use database;
 use DBI;
 use Plack::Request;
 use Net::DNS;
-use Regexp::Common qw /net/;
-
-my @key_char_set = ("A".."Z", "a".."z", "0".."9");
 
 database::prepare_database();
 
@@ -40,31 +38,6 @@ my %routes = (
     "/update" => \&update_ddns,
     "/clear" => \&clear_ddns,
 );
-
-sub rand_pass {
-    my $len = shift;
-    my $pass;
-
-    for (my $i=0; $i < $len; $i++) {
-        srand; $pass .= $key_char_set[rand @key_char_set];
-    }
-    
-    return $pass;
-}
-
-sub ip_record_type {
-    my $addr = shift;
-    my $type = undef;
-    if ($addr =~ /^$RE{net}{IPv4}$/) {
-        $type = "A";
-    }
-    elsif ($addr =~ /^$RE{net}{IPv6}$/) {
-        $type = "AAAA";
-    }
-    return $type;
-}
-
-
 
 sub create_subdomain {
     my $req = shift;
