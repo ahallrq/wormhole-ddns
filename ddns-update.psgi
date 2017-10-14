@@ -13,7 +13,7 @@ use util qw(rand_pass ip_record_type);
 use database;
 use routes::createsub;
 #use routes::modifysub;
-#use routes::deletesub;
+use routes::deletesub;
 #use routes::locksub;
 #use routes::chgkey;
 use routes::listsub;
@@ -23,14 +23,13 @@ use routes::help;
 
 use DBI;
 use Plack::Request;
-use Net::DNS;
 
 database::prepare_database();
 
 my %routes = (
     "/create" => \&createsub::create_subdomain,
     "/modify" => \&modify_subdomain,
-    "/delete" => \&delete_subdomain,
+    "/delete" => \&deletesub::delete_subdomain,
     "/lock" => \&lock_subdomain,
     "/chgkey" => \&chgkey_subdomain,
     "/list" => \&listsub::list_subdomains,
@@ -39,43 +38,7 @@ my %routes = (
     "/clear" => \&clear_ddns,
 );
 
-sub delete_subdomain {
-    my $req = shift;
-    
-    my $c_method = check_method($req); if (defined $c_method) { return $c_method; }
-    my $c_params = check_params($req, ("key", "subdomain")); if (defined $c_params) { return $c_params; }
-    my $c_key = check_key($req, $conf::admin_key); if (defined $c_key) { return $c_key; }
-    my $c_isvalid = valid_subdomain($req); if (defined $c_isvalid) { return $c_isvalid; }
-    my @subdomain_r = subdomain_exists($req); my $c_subexists = @subdomain_r;
-    if ($c_subexists == 1) { return $subdomain_r[0]->finalize; }
 
-    my $subdomain = $req->body_parameters->get("subdomain");
-
-    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. A"));
-    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. AAAA"));
-    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
-
-    my ($r_code, $r_msg) = execute_ddns($dns_update);
-
-    if (!$r_code) {
-   	my $res = $req->new_response(400, [], 
-        "Failed to delete subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\" from nameserver.\n");
-        return $res->finalize;
-    }
-
-    my $s_res = $database::DDNS_DB_DEL->execute($subdomain);
-    
-    if (defined $s_res) {
-        my $res = $req->new_response(200, [], 
-            "Successfully deleted subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\"\n");
-        return $res->finalize;
-    } else {
-        my $res = $req->new_response(400, [], 
-            "Failed to delete subdomain \"$subdomain.$conf::NAMESERVER_DNS_ZONE\" from database.\n");
-        return $res->finalize;
-    }
-}
 
 sub lock_subdomain {
     my $req = shift;
@@ -254,24 +217,6 @@ sub clear_ddns {
         $database::DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
         my $res = $req->new_response(200, [], 
             "Successfully cleared $subdomain.$conf::NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
-    }
-}
-
-sub execute_ddns {
-    my $dns_update = shift;
-    
-    my $dns_resolv = new Net::DNS::Resolver;
-    $dns_resolv->nameserver($conf::NAMESERVER); # convert to list later
-
-    my $reply = $dns_resolv->send($dns_update);
-    if ($reply) {
-        if ($reply->header->rcode eq 'NOERROR') {
-            return (1, "");
-        } else {
-            return (0, $reply->header->r_code);
-        }
-    } else {
-        return (0, $dns_resolv->errorstring);
     }
 }
 
