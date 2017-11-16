@@ -1,7 +1,10 @@
-package database;
+package Wormhole::Util::Database;
 use strict;
 use warnings;
 use DBI;
+
+use Exporter qw(import);
+our @EXPORT_OK = qw(prepare_database);
 
 our ($DDNS_DB_INS, $DDNS_DB_SEL_ALL, $DDNS_DB_SEL, $DDNS_DB_UPD_ADR);
 our ($DDNS_DB_DEL, $DDNS_DB_UPD_ATT, $DDNS_DB_UPD_KEY, $DDNS_DB_UPD_LCK);

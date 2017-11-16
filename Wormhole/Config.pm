@@ -1,4 +1,5 @@
-package conf;
+package Wormhole::Config;
+
 use strict;
 use warnings;
 

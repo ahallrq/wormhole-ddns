@@ -1,4 +1,4 @@
-package util;
+package Wormhole::Util::MiscUtils;
 use strict;
 use warnings;
 
@@ -37,7 +37,7 @@ sub execute_ddns {
     my $dns_update = shift;
     
     my $dns_resolv = new Net::DNS::Resolver;
-    $dns_resolv->nameserver($conf::NAMESERVER); # convert to list later
+    $dns_resolv->nameserver($Wormhole::Config::NAMESERVER); # convert to list later
 
     my $reply = $dns_resolv->send($dns_update);
     if ($reply) {

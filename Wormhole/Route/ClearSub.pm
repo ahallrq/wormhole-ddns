@@ -1,4 +1,4 @@
-package clearsub;
+package Wormhole::Route::ClearSub;
 
 use strict;
 use warnings;
@@ -7,9 +7,9 @@ use Exporter qw(import);
 our @EXPORT_OK = qw(clear_ddns);
 
 use lib "..";
-use checks qw(check_params check_key check_method subdomain_exists valid_subdomain);
-use util qw(ip_record_type execute_ddns);
-use database;
+use Wormhole::Util::Checks qw(check_params check_key check_method subdomain_exists valid_subdomain);
+use Wormhole::Util::MiscUtils qw(ip_record_type execute_ddns);
+use Wormhole::Util::Database;
 use Net::DNS;
 
 sub clear_ddns {
@@ -34,19 +34,19 @@ sub clear_ddns {
         return $res->finalize;
     }
 
-    my $dns_update = new Net::DNS::Update($conf::NAMESERVER_DNS_ZONE);
-    $dns_update->push(update => rr_del("$subdomain.$conf::NAMESERVER_DNS_ZONE. $rec_type"));
-    $dns_update->sign_tsig($conf::NAMESERVER_DNSSEC_KEY);
+    my $dns_update = new Net::DNS::Update($Wormhole::Config::NAMESERVER_DNS_ZONE);
+    $dns_update->push(update => rr_del("$subdomain.$Wormhole::Config::NAMESERVER_DNS_ZONE. $rec_type"));
+    $dns_update->sign_tsig($Wormhole::Config::NAMESERVER_DNSSEC_KEY);
 
     my ($r_code, $r_msg) = execute_ddns($dns_update);
     if (!$r_code) {
    	my $res = $req->new_response(400, [], 
-       "An attempt to clear $subdomain.$conf::NAMESERVER_DNS_ZONE failed.\n"); return $res->finalize;
+       "An attempt to clear $subdomain.$Wormhole::Config::NAMESERVER_DNS_ZONE failed.\n"); return $res->finalize;
     } else {
         my $time = time;
-        $database::DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
+        $Wormhole::Util::Database::DDNS_DB_UPD_ADR->execute("(unset)", "(unset)", $time, $subdomain_r[0]);
         my $res = $req->new_response(200, [], 
-            "Successfully cleared $subdomain.$conf::NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
+            "Successfully cleared $subdomain.$Wormhole::Config::NAMESERVER_DNS_ZONE.\n"); return $res->finalize;
     }
 }
 

@@ -1,11 +1,11 @@
-package help;
+package Wormhole::Route::Help;
 
 use strict;
 use warnings;
 
 use lib "..";
-use conf;
-use checks qw(check_params check_method);
+use Wormhole::Config;
+use Wormhole::Util::Checks qw(check_params check_method);
 
 sub get_help {
     my $req = shift;
@@ -13,7 +13,7 @@ sub get_help {
     my $c_method = check_method($req);
     if (!defined $c_method) {
         my $c_params = check_params($req, ("key")); 
-        if (!defined $c_params && $req->body_parameters->get("key") eq $conf::admin_key) {
+        if (!defined $c_params && $req->body_parameters->get("key") eq $Wormhole::Config::admin_key) {
             my $res = $req->new_response(200, [],
                 "-- Wormhole DynDNS Admin help --\n" .
                 "[POST] /create <key> <subdomain>           - Create a subdomain with a random key\n" .

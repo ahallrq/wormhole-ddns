@@ -1,11 +1,11 @@
-package checks;
+package Wormhole::Util::Checks;
 use strict;
 use warnings;
  
 use Exporter qw(import);
 our @EXPORT_OK = qw(check_params check_key check_method subdomain_exists valid_subdomain);
 
-use database;
+use Wormhole::Util::Database;
 
 sub check_params {
     my ($req, @param_list) = @_;
@@ -55,8 +55,8 @@ sub check_method {
 sub subdomain_exists {
     my $req = shift;
 
-    $database::DDNS_DB_SEL->execute($req->body_parameters->get('subdomain'));
-    my @result = $database::DDNS_DB_SEL->fetchrow_array;
+    $Wormhole::Util::Database::DDNS_DB_SEL->execute($req->body_parameters->get('subdomain'));
+    my @result = $Wormhole::Util::Database::DDNS_DB_SEL->fetchrow_array;
     if (!@result) {
         my @res = ($req->new_response(404, [], "The specified subdomain was not found.\n"));
         return @res;
